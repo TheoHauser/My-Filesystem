@@ -2,12 +2,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+void createBootblock();
+void createFAT();
+
+struct{
+
+FILE *drive = fopen("drive", "rw+");
+
 int main(){
-	//initialize counters and pointers to the disk and clusters, reserved clusters/sectors
+	//initialize counters
         int i, j, c;
+	//initialize arrays of pointers to all sectors on virtual disk, need 
 	void *reserved[6];
         void *clusters[9760];
-	//virtual disk
+	//create virtual disk
 	void *disk = malloc(5000000);
         void *p = disk;
         for(i = 0, j=0; i <= 5000000; i += 512, j++){
@@ -19,8 +27,6 @@ int main(){
                 	clusters[c] = p; c++;
 		}
         }
-
-	FILE *drive = fopen("drive", "rw+");
 	
 	//create bootblock in cluster 0 
 	void *bootblock = reserved[0]; 
@@ -57,10 +63,14 @@ int main(){
 	//write bootblock to drive
 	fwrite(bootblock, 512, 1,drive);
 
-	//create FAT and FAT2  in reserved clusters
-			
+	//create FAT and duplicate in reserved clusters
+	
 	
 		 
 	free(disk);
+
+}
+
+void createBootblock(){
 
 }

@@ -5,13 +5,23 @@
 //constants
 #define SECTORS 9765
 #define DATASIZE 9688
+
 #define FATSIZE 76
 #define RESERVED 77
+
 #define BLOCKSIZE 512
 
-void createBootblock();
-void createFATs();
+#define ROOT 78
+#define FAT 2
+
+//function declarations
+void clearDrive();
+int firstByte(int cluster);
+void formatDrive();
 void createDirTable();
+void createFATentry(int cluster, short next);
+FILE *createDirectory();
+
 
 //each FAT entry is 2 bytes, holds next cluster in file or special character 
 typedef struct FATentry{
@@ -37,20 +47,29 @@ typedef struct dirEntry{
 FILE *drive;
 
 int currentDir;
+int currentCluster;
 int currentSpace;
-void *reserved[77];
-void *clusters[9688];
+int currentOffset;
+//void *reserved[77];
+//void *clusters[9688];
 
 int main(){
-	currentDir = RESERVED;
-	currentSpace = currentDir + BLOCKSIZE;
+	currentDir = ROOT-RESERVED;
+	currentCluster = currentDir;
+	currentSpace = DATASIZE;
+	
 	drive = fopen("drive", "rw+");
-	//initialize counters
-        int i, j, c;
+	char *input = malloc(512);
+	
+	//initialize boolean for input
+        int b = 1;
+	
+	/*int i, j, c;
 	//create virtual disk
 	void *disk = malloc(5000000);
         void *p = disk;
-        for(i = 0, j=0; i <= 5000000; i += 512, j++){
+        
+	for(i = 0, j=0; i <= 5000000; i += 512, j++){
 		p = disk+i;
 		if(j<77){
 			reserved[j] = p;
@@ -58,20 +77,49 @@ int main(){
 		else{
                 	clusters[c] = p; c++;
 		}
-        }
+        }*/
+	
 	//create FAT, bootblock, and root directory table
-	createBootblock();
-	createFATs();
-	//createDirTable();
-		 
-	free(disk);
+	while(b){
+		printf("Type command (f to clear drive and format, q to quit, d to create directory)\n");
+		*input = getchar();
+		if(*input=='f'){
+			//fill drive with NULL
+			clearDrive();
+			//create FAT, bootblock, and root directory table
+			formatDrive();
+			printf("drive reformatted\n");
+		}
+		else if(*input == 'w'){
+		
+		}	
+		else if(*input=='q')
+			b = 0;
+	}	 
+	//free(disk);
 
 }
 
-void createBootblock(){
+void clearDrive(){
+	int i = 0;
+	char *nul = malloc(512);
+	char *p = nul;
+	for(i=0; i<512; i++, p++)
+		*p = 0x00;
+	fseek(drive, 0, SEEK_SET);
+	for(i=0; i<SECTORS; i++)
+		fwrite(nul, 512,1,drive);
+}
+
+int firstByte(int cluster){
+	cluster = cluster*512;
+	return (cluster-511);
+}
+
+void formatDrive(){
 	//create bootblock in cluster 0
-	//void *bootblock = malloc(512); 
-        void *bootblock = reserved[0];
+	void *bootblock = malloc(512); 
+        //void *bootblock = reserved[0];
         char *boot = (char*)bootblock;
         boot = strcat(boot,"My FAT32Lin");
         boot+=11;
@@ -104,17 +152,53 @@ void createBootblock(){
 
         //write bootblock to drive
         fwrite(bootblock, 1, 512,drive);
-	//free(bootblock);
+	free(bootblock);
 
+	//create FATs
+	void *doubleFAT = malloc(512*FATSIZE);
+        //void *doubleFAT = reserved[1];
+        fseek(drive, (BLOCKSIZE*FATSIZE) , SEEK_CUR);
+        free(doubleFAT);
+	
+	//create root directory table
+	createDirTable();  
 }
 
-void createFATs(){
-	//void *doubleFAT = malloc(512*FATsize);
-	void *doubleFAT = reserved[1];
-	fseek(drive, (BLOCKSIZE*FATSIZE) , SEEK_CUR);
-	//free(doubleFAT);	
-}
-
+//leaves space for directory table 
 void createDirTable(){
-	fseek(drive, BLOCKSIZE, SEEK_CUR);
+	//update currentDirectory cluster pointer 
+	currentDir = currentCluster;
+
+	//root starts with one block and is dynamically allocated more as needed
+	if(currentDir == ROOT)
+		createFATentry(currentDir, 0xFFFF);
+
+	fseek(drive, BLOCKSIZE*2, SEEK_CUR);
+	currentCluster+=2;
+	currentSpace -=2;
 }
+//creates fat entry and returns pointer to previous position
+void createFATentry(int cluster, short next){
+	FATentry *new = malloc(sizeof(FATentry));
+	new->next = next;
+	//seek to FAT entry for cluster and write next
+	fseek(drive, firstByte(FAT)+(2*cluster), SEEK_SET);
+	fwrite(new, 2, 1, drive);
+	//seek to second FAT and write in entry again
+	fseek(drive, 38*BLOCKSIZE-2, SEEK_CUR);
+	fwrite(new, 2, 1, drive);
+	//seek back to previous location
+	fseek(drive, firstByte(cluster)+currentOffset, SEEK_SET);
+}
+
+FILE *createDirectory(char *path){
+	int i;
+	FILE *dir;
+	char *names[15];
+	names[0] = strtok(path, "/");
+	for(i = 1; path != NULL && i < 15; i++){
+		names[i] = strtok(NULL, "/");
+	}
+	return dir;
+}
+

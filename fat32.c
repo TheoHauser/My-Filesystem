@@ -23,7 +23,7 @@ int firstAvailable();
 void formatDrive();
 void createDirTable();
 void createFATentry(int cluster, short next);
-void createDIRentry(char name[11], char attributes, short time, short date, short stCluster, long fileSize);
+void createDirEntry(char name[11], char attributes, short time, short date, short stCluster, long fileSize);
 FILE *createDirectory(char *path);
 
 
@@ -255,7 +255,15 @@ FILE *createDirectory(char *path){
 	short date = *(timeDate+1);
 	char attributes = 0x08;
 
-	createDIRentry(names[j-1], attributes, *timeDate, date, currentCluster, BLOCKSIZE*10);
+	createDirEntry(names[j-1], attributes, *timeDate, date, currentCluster, BLOCKSIZE*10);
+	createDirTable();
+
+	free(entry);
 	return dir;
 }
 
+void createDirEntry(char *name, short attributes, short time, short date, int stCluster, long filesize){
+	dirEntry entry = malloc(sizeof(dirEntry));
+
+	return entry;	
+}

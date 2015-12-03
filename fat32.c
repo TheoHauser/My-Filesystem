@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 //constants
 #define SECTORS 9765
@@ -17,10 +18,12 @@
 //function declarations
 void clearDrive();
 int firstByte(int cluster);
+short *getTimeDate();
 void formatDrive();
 void createDirTable();
 void createFATentry(int cluster, short next);
-FILE *createDirectory();
+void createDIRentry(char name[11], char attributes, short time, short date, short stCluster, long fileSize);
+FILE *createDirectory(char *path);
 
 
 //each FAT entry is 2 bytes, holds next cluster in file or special character 
@@ -47,11 +50,14 @@ typedef struct dirEntry{
 FILE *drive;
 
 int currentDir;
+int parentDir;
 int currentCluster;
 int currentSpace;
 int currentOffset;
-//void *reserved[77];
-//void *clusters[9688];
+
+time_t rawtime;
+struct tm *timeinfo;
+
 
 int main(){
 	currentDir = ROOT-RESERVED;
@@ -61,23 +67,10 @@ int main(){
 	drive = fopen("drive", "rw+");
 	char *input = malloc(512);
 	
+	short *timedate = getTimeDate();
+
 	//initialize boolean for input
         int b = 1;
-	
-	/*int i, j, c;
-	//create virtual disk
-	void *disk = malloc(5000000);
-        void *p = disk;
-        
-	for(i = 0, j=0; i <= 5000000; i += 512, j++){
-		p = disk+i;
-		if(j<77){
-			reserved[j] = p;
-		}
-		else{
-                	clusters[c] = p; c++;
-		}
-        }*/
 	
 	//create FAT, bootblock, and root directory table
 	while(b){
@@ -90,13 +83,14 @@ int main(){
 			formatDrive();
 			printf("drive reformatted\n");
 		}
-		else if(*input == 'w'){
-		
+		else if(*input == 'd'){
+			printf("Enter directory path without spaces\n");
+			scanf("%s", input);
+			createDirectory(input);
 		}	
 		else if(*input=='q')
 			b = 0;
 	}	 
-	//free(disk);
 
 }
 
@@ -116,10 +110,37 @@ int firstByte(int cluster){
 	return (cluster-511);
 }
 
+short *getTimeDate(){
+	short *timedate = malloc(2*sizeof(short));
+	short *p = timedate;
+	//get time
+	time(&rawtime);
+        timeinfo = localtime(&rawtime);
+
+	//format time
+        short time = (short)(timeinfo->tm_hour<<11);
+        time = time+(timeinfo->tm_min<<5);
+        time = time +(timeinfo->tm_sec);
+	*p = time; p++;
+        printf("%x\n", time);
+
+	//format date
+	short date = (short)((timeinfo->tm_year-80)<<9);
+	date = date + (timeinfo->tm_mon<<5);
+	date = date + (timeinfo->tm_mday);
+	*p = date; p++;
+	printf("%x\n", date);
+	return timedate;
+
+}
+
 void formatDrive(){
+	currentDir = ROOT-RESERVED;
+        currentCluster = currentDir;
+        currentSpace = DATASIZE;
+
 	//create bootblock in cluster 0
 	void *bootblock = malloc(512); 
-        //void *bootblock = reserved[0];
         char *boot = (char*)bootblock;
         boot = strcat(boot,"My FAT32Lin");
         boot+=11;
@@ -156,7 +177,6 @@ void formatDrive(){
 
 	//create FATs
 	void *doubleFAT = malloc(512*FATSIZE);
-        //void *doubleFAT = reserved[1];
         fseek(drive, (BLOCKSIZE*FATSIZE) , SEEK_CUR);
         free(doubleFAT);
 	
@@ -192,13 +212,37 @@ void createFATentry(int cluster, short next){
 }
 
 FILE *createDirectory(char *path){
-	int i;
+	int i, j;
+	dirEntry *entry = malloc(16*sizeof(dirEntry));
 	FILE *dir;
-	char *names[15];
+	char *names[16];
 	names[0] = strtok(path, "/");
-	for(i = 1; path != NULL && i < 15; i++){
+	for(i = 1; names[i]!= NULL && i < 15; i++){
 		names[i] = strtok(NULL, "/");
 	}
+	fseek(drive, firstByte(ROOT), SEEK_SET);
+	for(j = 0 ; j < i ; j++, entry++){
+		fread(entry, 32, 1, drive);
+		currentOffset+=32;
+		if(entry->name==names[j] && j!=i){
+			fseek(drive,firstByte(entry->stCluster-currentCluster),SEEK_CUR);
+			currentCluster = entry->stCluster; currentOffset = 0;
+			parentDir = currentDir; currentDir = currentCluster; 
+		}
+		else if(entry->stCluster == 0 && j!=i){
+			printf("path not found\n");
+			return NULL;
+		}
+		else if(entry->subdir == 0 && entry->name == names[j]){
+			printf("path a file not subdirectory\n");
+			return NULL;
+		}
+	}
+	//put in hidden files . and ..
+	short *timeDate = getTimeDate();
+	char attributes = 0x08;
+
+	//createDIRentry(names[j-1], attributes, timeinfo->tm_hour, )
 	return dir;
 }
 

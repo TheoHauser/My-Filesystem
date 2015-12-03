@@ -19,6 +19,7 @@
 void clearDrive();
 int firstByte(int cluster);
 short *getTimeDate();
+int firstAvailable();
 void formatDrive();
 void createDirTable();
 void createFATentry(int cluster, short next);
@@ -92,6 +93,13 @@ int main(){
 			b = 0;
 	}	 
 
+}
+
+//finds first available cluster
+int firstAvailable(){
+	fseek(drive, firstByte(FAT)+2, SEEK_SET);
+	
+	return;
 }
 
 void clearDrive(){
@@ -217,7 +225,7 @@ FILE *createDirectory(char *path){
 	FILE *dir;
 	char *names[16];
 	names[0] = strtok(path, "/");
-	for(i = 1; names[i]!= NULL && i < 15; i++){
+	for(i = 1; names[i]!= NULL && i < 16; i++){
 		names[i] = strtok(NULL, "/");
 	}
 	fseek(drive, firstByte(ROOT), SEEK_SET);
@@ -234,15 +242,20 @@ FILE *createDirectory(char *path){
 			return NULL;
 		}
 		else if(entry->subdir == 0 && entry->name == names[j]){
-			printf("path a file not subdirectory\n");
+			printf("path is a file and not a subdirectory\n");
 			return NULL;
+		}
+		else if(currentOffset = 512){
+			createFATentry(currentDir, firstAvailable());	
 		}
 	}
 	//put in hidden files . and ..
+	
 	short *timeDate = getTimeDate();
+	short date = *(timeDate+1);
 	char attributes = 0x08;
 
-	//createDIRentry(names[j-1], attributes, timeinfo->tm_hour, )
+	createDIRentry(names[j-1], attributes, *timeDate, date, currentCluster, BLOCKSIZE*10);
 	return dir;
 }
 

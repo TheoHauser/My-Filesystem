@@ -22,7 +22,7 @@ typedef struct FATentry{
 
 //Each Directory table entry is 32 bytes
 typedef struct dirEntry{
-	char *name;
+	char name[11];
 	int rdonly : 1;
 	int hidden : 1;
 	int sysfil : 1;
@@ -228,7 +228,7 @@ dirEntry *createDirectory(char *path){
 	dirEntry *entry = malloc(16*sizeof(dirEntry));
 	dirEntry *h = entry;
 	dirEntry *dir = malloc(sizeof(dirEntry));
-	char *names[17];
+	char *names[16];
 	names[0] = strtok(path, "/");
 	for(i = 1; names[i]!= NULL && i < 16; i++){
 		names[i] = strtok(NULL, "/");
@@ -236,6 +236,8 @@ dirEntry *createDirectory(char *path){
 			i--;
 	}
 	printf("i = %d", i);
+	j = firstByte(ROOT);
+	printf("firstByte(ROOT) = %d", j);
 	fseek(drive, firstByte(ROOT), SEEK_SET);
 	for(j = 0 ; j < i-1 ; entry++){
 		fread(entry, 32, 1, drive);
@@ -266,7 +268,7 @@ dirEntry *createDirectory(char *path){
 	short date = *(timeDate+1);
 	char attributes = 0x08;
 
-	dir = createDirEntry(names[j], attributes, *timeDate, date, currentCluster, BLOCKSIZE*10);
+	dir = createDirEntry((char*)names[j], attributes, *timeDate, date, currentCluster, BLOCKSIZE*10);
 	createDirTable();
 
 	free(h);
@@ -275,13 +277,20 @@ dirEntry *createDirectory(char *path){
 }
 
 dirEntry *createDirEntry(char *namep, char attributes, short time, short date, short stCluster, long filesize){
+	int i;
 	dirEntry *entry = malloc(sizeof(dirEntry));
 	dirEntry *check = malloc(sizeof(dirEntry));
 	int numEntries;
 	//get name and update entry
-	char *name = namep;	
-	entry->name = name;
-
+	printf("%s\n", namep);
+	for(i = 0; i < 11; i++, namep++){
+		if(*namep!=NULL)
+			entry->name[i] = *namep;
+		else
+			entry->name[i]= ' ';
+	}
+	
+	printf("%x", attributes);
 	//set attributes
 	if(attributes>=128){
 		attributes -=128;

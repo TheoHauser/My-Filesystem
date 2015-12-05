@@ -23,12 +23,14 @@ typedef struct FATentry{
 //Each Directory table entry is 32 bytes
 typedef struct dirEntry{
 	char name[11];
-	int rdonly : 1;
-	int hidden : 1;
-	int sysfil : 1;
-	int volLabel : 1;
-	int subdir : 1;
-	int archive : 1;
+	unsigned int rdonly : 1;
+	unsigned int hidden : 1;
+	unsigned int sysfil : 1;
+	unsigned int volLabel : 1;
+	unsigned int subdir : 1;
+	unsigned int archive : 1;
+	unsigned int bit : 1;
+	unsigned int bit1 : 1;
 	char pad[10];
 	short time;
 	short date;
@@ -37,6 +39,7 @@ typedef struct dirEntry{
 }dirEntry;  
 
 //function declarations
+void clearInput();
 void clearDrive();
 int firstByte(int cluster);
 short *getTimeDate();
@@ -68,7 +71,7 @@ int main(){
 	currentSpace = DATASIZE;
 	
 	drive = fopen("drive", "rw+");
-	char *input = malloc(512);
+	char cmd;
 	
 	short *timedate = getTimeDate();
 
@@ -77,30 +80,52 @@ int main(){
 	
 	//create FAT, bootblock, and root directory table
 	while(b){
+		char *input = malloc(512);
 		printf("Type command (f to clear drive and format, q to quit, d to create directory)\n");
-		*input = getchar();
-		if(*input=='f'){
+		cmd = getchar();
+		if(cmd=='f'){
 			//fill drive with NULL
 			clearDrive();
 			//create FAT, bootblock, and root directory table
 			formatDrive();
 			printf("drive reformatted\n");
 		}
-		else if(*input == 'd'){
+		else if(cmd == 'd'){
+			clearInput();
 			printf("Enter directory path without spaces\n");
 			scanf("%s", input);
 			createDirectory(input);
 		}	
-		else if(*input=='q')
+		else if(cmd=='q')
 			b = 0;
-	}	 
-
+		clearInput();
+		//free(input);
+	}
+}
+//clears input for scanf
+void clearInput(){
+	char d;
+	while(d!='\n')
+		d = fgetc(stdin);
 }
 
 //finds first available cluster
 int firstAvailable(){
-	fseek(drive, firstByte(FAT)+2, SEEK_SET);
+	int i = 1;
 	
+	//go to FAT and read first entry into f
+	fseek(drive, firstByte(FAT)+2, SEEK_SET);
+	FATentry *f = malloc(sizeof(FATentry));
+	fread(f, 2, 1, drive);
+	for(;i<=9688;i++){
+		if(f->next == 0){
+			fseek(drive, firstByte(i+RESERVED), SEEK_SET);
+			return i;
+		}
+		else
+			fread(f, 2, 1, drive);
+	}
+	printf("No more filesystem space\n");
 	return;
 }
 
@@ -192,7 +217,8 @@ void formatDrive(){
         free(doubleFAT);
 	
 	//create root directory table
-	createDirTable();  
+	createDirTable();
+	createFATentry(1, 0xFFFF);  
 }
 
 //leaves space for directory table 
@@ -204,9 +230,9 @@ void createDirTable(){
 	if(currentDir == ROOT)
 		createFATentry(currentDir, 0xFFFF);
 
-	fseek(drive, BLOCKSIZE*2, SEEK_CUR);
-	currentCluster+=2;
-	currentSpace -=2;
+	fseek(drive, BLOCKSIZE, SEEK_CUR);
+	currentCluster+=1;
+	currentSpace -=1;
 }
 //creates fat entry and returns pointer to previous position
 void createFATentry(int cluster, short next){
@@ -224,42 +250,58 @@ void createFATentry(int cluster, short next){
 }
 
 dirEntry *createDirectory(char *path){
-	int i, j;
+	int i, j, c;
 	dirEntry *entry = malloc(16*sizeof(dirEntry));
 	dirEntry *h = entry;
-	dirEntry *dir = malloc(sizeof(dirEntry));
+	dirEntry *dir;
 	char *names[16];
+	char entryName[12];
 	names[0] = strtok(path, "/");
-	for(i = 1; names[i]!= NULL && i < 16; i++){
+	for(i = 1; names[i-1]!= NULL && i < 16; i++){
 		names[i] = strtok(NULL, "/");
-		if(names[i]==NULL)
-			i--;
 	}
-	printf("i = %d", i);
-	j = firstByte(ROOT);
-	printf("firstByte(ROOT) = %d", j);
+	i--;
 	fseek(drive, firstByte(ROOT), SEEK_SET);
-	for(j = 0 ; j < i-1 ; entry++){
+	for(j = 0 ; j < i ; entry++){
 		fread(entry, 32, 1, drive);
 		currentOffset+=32;
-		if(entry->name==names[j]){
-			fseek(drive,firstByte(entry->stCluster-currentCluster),SEEK_CUR);
-			currentCluster = entry->stCluster; currentOffset = 0;
-			parentDir = currentDir; currentDir = currentCluster; 
-			j++;
+
+		//change entry->name to comparable, NULL terminated string
+		if(entry->stCluster!=NULL||entry->stCluster!=0){
+			c = 0; 
+			while(entry->name[c]!= ' '&& entry->name[c]!=NULL){
+				entryName[c] = (char)entry->name[c];
+				c++;
+			}
 		}
-		else if(entry->stCluster == 0 && j!=i-1){
-			printf("path not found\n");
-			return NULL;
+		entryName[c] = '\0';
+		char *e  = &entryName;
+		//find directory to write new directory into
+		if(i>j+1){
+			if(strcmp(e, names[j])==0){
+				fseek(drive,firstByte(entry->stCluster+RESERVED),SEEK_SET);
+				currentCluster = entry->stCluster; 
+				currentOffset = 0;
+				parentDir = currentDir; 
+				currentDir = currentCluster; 
+				j++;
+			}
+			else if(entry->stCluster == 0){
+				printf("path not found\n");
+				return NULL;
+			}	
 		}
-		else if(entry->subdir == 0 && entry->name == names[j]){
-			printf("path is a file and not a subdirectory\n");
+		else if(strcmp(e, names[j])==0){
+			printf("File or directory already exists with this name\n");
 			return NULL;
 		}
 		else if(currentOffset == 512){
-			printf("No space in current directory table");
+			printf("No space in current directory table\n");
 			return NULL;
 		}
+		else if(entry->stCluster == 0||entry->stCluster == NULL)
+			i--;
+		
 	}
 	//Do I need to create . and ..?
 	
@@ -268,7 +310,10 @@ dirEntry *createDirectory(char *path){
 	short date = *(timeDate+1);
 	char attributes = 0x08;
 
-	dir = createDirEntry((char*)names[j], attributes, *timeDate, date, currentCluster, BLOCKSIZE*10);
+	
+	currentCluster = firstAvailable();
+	dir = createDirEntry(names[j], attributes, *timeDate, date, currentCluster, BLOCKSIZE);
+	createFATentry(currentCluster, 0xFFFF);
 	createDirTable();
 
 	free(h);
@@ -282,41 +327,69 @@ dirEntry *createDirEntry(char *namep, char attributes, short time, short date, s
 	dirEntry *check = malloc(sizeof(dirEntry));
 	int numEntries;
 	//get name and update entry
-	printf("%s\n", namep);
-	for(i = 0; i < 11; i++, namep++){
-		if(*namep!=NULL)
+	for(i = 0; i <11; i++, namep++){
+		if(*namep!=NULL){
+			//move to extension
+			if(*namep == '.'){
+				namep++;
+				for(;i<8;i++)
+					entry->name[i] = ' ';
+			}
+			else if(i == 8 && *namep!='.'){
+                        	printf("Create file or directory failed, file name too long");
+                        	return NULL;
+               		}
 			entry->name[i] = *namep;
-		else
-			entry->name[i]= ' ';
+		}
+		else{	
+			for(; i < 11; i++)
+				entry->name[i]= ' ';
+		}
 	}
 	
-	printf("%x", attributes);
 	//set attributes
 	if(attributes>=128){
 		attributes -=128;
 		entry->rdonly = 1;
 	}
+	else
+		entry->rdonly = 0;
 	if(attributes>=64){
 		attributes -= 64;
 		entry->hidden = 1;
 	}
+	else
+		entry->hidden = 0;
 	if(attributes>=32){
 		attributes -= 32;
 		entry->sysfil = 1;
 	}
+	else
+		entry->sysfil = 0;
 	if(attributes>=16){
 		attributes -= 16;
 		entry->volLabel = 1;
 	}
+	else
+		entry->volLabel = 0;
 	if(attributes>=8){
 		attributes -= 8;
 		entry->subdir = 1;
 	}
+	else
+		entry->subdir = 0;
 	if(attributes>=4){
 		attributes -= 4;
 		entry->archive = 1;
 	}
-	
+	else
+		entry->archive = 0;
+	entry->bit = 0;
+	entry->bit1 = 0;
+		
+	for(i = 0; i < 10; i++)
+		entry->pad[i] = 0x00;
+
 	//set time&date
 	entry->time = time;
 	entry->date = date;
@@ -325,14 +398,19 @@ dirEntry *createDirEntry(char *namep, char attributes, short time, short date, s
 	entry->stCluster = stCluster;
 	entry->fileSize = filesize;
 
-	//seek to currentdir to wirte entry
+	//find empty entry
 	fseek(drive, firstByte(currentDir+RESERVED), SEEK_SET);
-
-	//find open entry
 	fread(check, 32, 1, drive);
 	while(check->stCluster!=0)
 		fread(check, 32, 1, drive);
+	
+	//move back to empty entry and write to drive
+	fseek(drive, -32, SEEK_CUR);
 	fwrite(entry, 32, 1, drive);
+	
+	//seek back to previous position
 	fseek(drive, firstByte((entry->stCluster+RESERVED)), SEEK_SET);
 	return entry;
 }
+
+

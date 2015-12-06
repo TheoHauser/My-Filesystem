@@ -436,6 +436,7 @@ dirEntry *createFile(char *path){
 	char *names[16];
 	char entryName[12];
 	char *p = path;
+	char *e;
 	*(p + 12) = '\0';
 	if(strchr(p, '.')!=NULL){
 		while(*p!='.'){
@@ -467,7 +468,7 @@ dirEntry *createFile(char *path){
                         }
                 }
                 entryName[c] = '\0';
-                char *e  = &entryName;
+                e  = (char*)&entryName;
                 //find directory to write new directory into
                 if(i>j+1){
                         if(strcmp(e, names[j])==0){
@@ -515,7 +516,9 @@ dirEntry *openFile(char *path){
 	dirEntry *entry = malloc(sizeof(dirEntry));
 	dirEntry *file = malloc(sizeof(dirEntry));
 	char *names[16];
-	
+	char entryName[12];
+	char *e;
+		
 	names[0] = strtok(path, "/");
         //seperate path using the slash's
         for(i = 1; names[i-1]!= NULL && i < 16; i++){
@@ -537,6 +540,7 @@ dirEntry *openFile(char *path){
                                 c++;
                         }
                 }
+		e = (char*)&entryName;
                 if(i>j+1){
                         if(strcmp(e, names[j])==0){
                                 fseek(drive,firstByte(entry->stCluster+RESERVED),SEEK_SET);

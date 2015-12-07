@@ -50,6 +50,8 @@ void createFATentry(int cluster, short next);
 dirEntry *createDirEntry(char *namep, char attributes, short time, short date, short stCluster, long fileSize);
 dirEntry *createDirectory(char *path);
 dirEntry *createFile(char *path);
+dirEntry *openFile(char *path);
+int writeFile(dirEntry *file, char *write);
 
 //initialize file pointer
 FILE *drive;
@@ -70,6 +72,8 @@ int main(){
 	currentDir = ROOT-RESERVED;
 	currentCluster = currentDir;
 	currentSpace = DATASIZE;
+
+	dirEntry *file;
 	
 	drive = fopen("drive", "rw+");
 	char cmd;
@@ -82,7 +86,7 @@ int main(){
 	//create FAT, bootblock, and root directory table
 	while(b){
 		char *input = malloc(512);
-		printf("Type command (f to clear drive and format, q to quit, d to create directory, c to create file)\n");
+		printf("Type command (f to clear drive and format, q to quit, d to create directory, c to create file, o to open and write to file)\n");
 		cmd = getchar();
 		if(cmd=='f'){
 			//fill drive with NULL
@@ -105,6 +109,15 @@ int main(){
 		}	
 		else if(cmd=='q')
 			b = 0;
+		else if(cmd == 'o'){
+			clearInput();
+			printf("print path of file to write to\n");
+			scanf("%s", input);
+			file = openFile(input);
+			char *p = malloc(5*BLOCKSIZE);
+			p = strcat(p, "This is the file it should be where the inside of path at the first open cluster");
+			write(file, p);
+		}	
 		clearInput();
 		//free(input);
 	}
@@ -437,14 +450,23 @@ dirEntry *createFile(char *path){
 	char entryName[12];
 	char *p = path;
 	char *e;
-	*(p + 12) = '\0';
+	while(*p!= 0){p++;}
+	*p = '\0';
+	p = path;
 	if(strchr(p, '.')!=NULL){
+		i = 0;
 		while(*p!='.'){
 			p++;
 			i++;
+			if(*p == '/')
+				i = 0;
 		}
-		while(i<12)
+		p = p+(9-i);
+		while(i<12){
 			*p = *(p+1);
+			i++;
+			p++;
+		}
 	}
 	names[0] = strtok(path, "/");
         //seperate path using the slash's
@@ -512,7 +534,7 @@ dirEntry *createFile(char *path){
 }
 
 dirEntry *openFile(char *path){
-	int i, j, c;
+	int i, j, c, k;
 	dirEntry *entry = malloc(sizeof(dirEntry));
 	dirEntry *file = malloc(sizeof(dirEntry));
 	char *names[16];
@@ -531,7 +553,6 @@ dirEntry *openFile(char *path){
                 //read entries until path is totally parsed
                 fread(entry, 32, 1, drive);
                 currentOffset+=32;
-
                 //change entry->name to comparable, NULL terminated string
                 if(entry->stCluster!= 0){
                         c = 0;
@@ -539,6 +560,14 @@ dirEntry *openFile(char *path){
                                 entryName[c] = (char)entry->name[c];
                                 c++;
                         }
+			if(c < 12 && i>j+1){
+				entryName[c] = '.';
+				k = c+1;
+				c = 9;
+				for(; c < 12; c++, k++)
+					entryName[k] = entry->name[c];
+			}
+			entryName[k] = '\0';
                 }
 		e = (char*)&entryName;
                 if(i>j+1){
@@ -546,8 +575,6 @@ dirEntry *openFile(char *path){
                                 fseek(drive,firstByte(entry->stCluster+RESERVED),SEEK_SET);
                                 currentCluster = entry->stCluster;
                                 currentOffset = 0;
-                                parentDir = currentDir;
-                                currentDir = currentCluster;
                                 j++;
                         }
                         else if(entry->stCluster == 0){
@@ -568,4 +595,25 @@ dirEntry *openFile(char *path){
 		}
 	}
 	return file;
+}
+
+int writeFile(dirEntry *file, char *write){
+	int i = 0;
+	char cluster[512];
+	char *c;
+	if(file->stCluster!= 0){
+		//go to end of file
+		while(c!='\0'){
+			fread(c, 1, 1, drive);
+ 		}
+		fseek(drive, -1, SEEK_CUR);
+		while(*write != '\0'){
+			for(i = 0; i < 512 && *write == '\0'; i++, write++)
+				cluster[i] = *write;
+			fwrite((char*)&cluster, i, 1, drive);
+		}
+		return 0;
+	}
+	else
+		return -1;
 }

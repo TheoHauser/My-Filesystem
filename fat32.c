@@ -116,7 +116,8 @@ int main(){
 			file = openFile(input);
 			char *p = malloc(5*BLOCKSIZE);
 			p = strcat(p, "This is the file it should be where the inside of path at the first open cluster");
-			write(file, p);
+			int s = writeFile(file, p);
+			printf("write succesful: %d\n", s);
 		}	
 		clearInput();
 		//free(input);
@@ -537,17 +538,32 @@ dirEntry *openFile(char *path){
 	int i, j, c, k;
 	dirEntry *entry = malloc(sizeof(dirEntry));
 	dirEntry *file = malloc(sizeof(dirEntry));
+	char *name[16];
 	char *names[16];
 	char entryName[12];
-	char *e;
-		
-	names[0] = strtok(path, "/");
+	char *e, *ex;
+
+	name[0] = strtok(path, "/");
+	names[0] = malloc(12*sizeof(char));
+	strcpy(names[0], name[0]);
         //seperate path using the slash's
-        for(i = 1; names[i-1]!= NULL && i < 16; i++){
-                names[i] = strtok(NULL, "/");
+        for(i = 1; name[i-1]!= NULL && i < 16; i++){
+                name[i] = strtok(NULL, "/");
+		if(name[i]!=0x0){
+			names[i] = malloc(12*sizeof(char));
+			strcpy(names[i], name[i]);
+		}
         }
         i--;
-
+	for(e = names[i-1], j=0; *e!='.'; e++,j++);
+	ex = names[i-1];
+	ex = ex+8;
+	for(c = 0; c < 3; c++, ex++)
+		*ex = *(e+1+c);
+	*ex = '\0';
+	for(; j < 8; j++, e++){
+		*e = ' ';
+	}
 	fseek(drive, firstByte(ROOT), SEEK_SET);
         for(j = 0 ; j < i ; ){
                 //read entries until path is totally parsed
@@ -556,18 +572,11 @@ dirEntry *openFile(char *path){
                 //change entry->name to comparable, NULL terminated string
                 if(entry->stCluster!= 0){
                         c = 0;
-                        while(entry->name[c]!= ' '&& c < 12){
+                        while((i>j+1 && entry->name[c]!= ' ')  || (i<=j+1 && c < 12)){
                                 entryName[c] = (char)entry->name[c];
                                 c++;
                         }
-			if(c < 12 && i>j+1){
-				entryName[c] = '.';
-				k = c+1;
-				c = 9;
-				for(; c < 12; c++, k++)
-					entryName[k] = entry->name[c];
-			}
-			entryName[k] = '\0';
+			entryName[c] = '\0';
                 }
 		e = (char*)&entryName;
                 if(i>j+1){
@@ -600,15 +609,18 @@ dirEntry *openFile(char *path){
 int writeFile(dirEntry *file, char *write){
 	int i = 0;
 	char cluster[512];
-	char *c;
+	char *c = malloc(1);
 	if(file->stCluster!= 0){
 		//go to end of file
-		while(c!='\0'){
+		fseek(drive, firstByte(file->stCluster+RESERVED), SEEK_SET);
+		fread(c, 1, 1, drive);
+		while(*c!=0x00){
 			fread(c, 1, 1, drive);
+			currentOffset++;
  		}
 		fseek(drive, -1, SEEK_CUR);
 		while(*write != '\0'){
-			for(i = 0; i < 512 && *write == '\0'; i++, write++)
+			for(i = 0; i < 512 && *write != '\0'; i++, write++)
 				cluster[i] = *write;
 			fwrite((char*)&cluster, i, 1, drive);
 		}

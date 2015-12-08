@@ -71,7 +71,7 @@ int currentOffset;
 time_t rawtime;
 struct tm *timeinfo;
 
-
+//my main function is to test the functions, I will make a demo for my demo
 int main(){
 	currentDir = ROOT-RESERVED;
 	currentCluster = currentDir;
@@ -159,8 +159,10 @@ int firstAvailable(){
 	fseek(drive, firstByte(FAT)+2, SEEK_SET);
 	FATentry *f = malloc(sizeof(FATentry));
 	fread(f, 2, 1, drive);
+	//read first FAT entry
 	for(;i<=9688;i++){
 		if(f->next == 0){
+			//seek to first available cluster and return cluster
 			fseek(drive, firstByte(i+RESERVED), SEEK_SET);
 			return i;
 		}
@@ -172,6 +174,7 @@ int firstAvailable(){
 }
 
 void clearDrive(){
+	//write null to entire drive file
 	int i = 0;
 	char *nul = malloc(512);
 	char *p = nul;
@@ -184,6 +187,7 @@ void clearDrive(){
 }
 
 int firstByte(int cluster){
+	//find the first byte of a cluster
 	cluster = (cluster-1)*512;
 	return (cluster);
 }
@@ -291,7 +295,10 @@ void createFATentry(int cluster, short next){
 }
 
 int getNextCluster(int cluster){
+	//allocate buffer for FAT entry
 	FATentry *entry = malloc(sizeof(FATentry));
+
+	//read and return entry->next
 	fseek(drive, firstByte(FAT)+(2*cluster), SEEK_SET);
 	fread(entry, 2, 1, drive);
 	if(entry->next!=0xFFFF)
@@ -338,9 +345,11 @@ dirEntry *createDirectory(char *path){
 		}
 		entryName[c] = '\0';
 		char *e  = &entryName;
-		//find directory to write new directory into
+		//if the path is not the final directory to create
 		if(i>j+1){
+			//if the path's name matches the entry name
 			if(strcmp(e, names[j])==0){
+				//seek to that directory
 				fseek(drive,firstByte(entry->stCluster+RESERVED),SEEK_SET);
 				currentCluster = entry->stCluster; 
 				currentOffset = 0;
@@ -525,7 +534,7 @@ dirEntry *createFile(char *path){
                 }
                 entryName[c] = '\0';
                 e  = (char*)&entryName;
-                //find directory to write new directory into
+                //find directory to write new file into
                 if(i>j+1){
                         if(strcmp(e, names[j])==0){
                                 fseek(drive,firstByte(entry->stCluster+RESERVED),SEEK_SET);
@@ -540,6 +549,7 @@ dirEntry *createFile(char *path){
                                 return NULL;
                         }
                 }
+		//if the path name is now the file to create
                 else if(strcmp(e, names[j])==0){
                         printf("File or directory already exists with this name\n");
                         return NULL;
@@ -556,9 +566,10 @@ dirEntry *createFile(char *path){
 	short *timeDate = getTimeDate();
         short date = *(timeDate+1);
 
+	//0 for all attribute
 	char attributes = 0x00;
 
-        currentCluster = firstAvailable();
+	currentCluster = firstAvailable();
         fil = createDirEntry(names[j], attributes, *timeDate, date, currentCluster, BLOCKSIZE*2);
         createFATentry(currentCluster, currentCluster+1);
 	createFATentry(currentCluster+1, 0xFFFF);
@@ -569,8 +580,11 @@ dirEntry *createFile(char *path){
 
 dirEntry *openFile(char *path){
 	int i, j, c;
+	//allocate entry to read and entry to return
 	dirEntry *entry = malloc(sizeof(dirEntry));
 	dirEntry *file = malloc(sizeof(dirEntry));
+	
+	//char arrays and pointers for path parsing
 	char *name[16];
 	char *names[16];
 	char entryName[12];
@@ -588,6 +602,7 @@ dirEntry *openFile(char *path){
 		}
         }
         i--;
+	//look for extension and add spaces so it looks like an entry name
 	for(e = names[i-1], j=0; *e!='.'; e++,j++);
 	ex = names[i-1];
 	ex = ex+8;
@@ -598,6 +613,7 @@ dirEntry *openFile(char *path){
 		*e = ' ';
 	}
 
+	//set currentDir and seek to root
 	currentDir = ROOT;
 	fseek(drive, firstByte(ROOT), SEEK_SET);
         for(j = 0 ; j < i ; ){
@@ -614,7 +630,9 @@ dirEntry *openFile(char *path){
 			entryName[c] = '\0';
                 }
 		e = (char*)&entryName;
+		//if path is still directory
                 if(i>j+1){
+			//if entry name and path are the same, go to that directory
                         if(strcmp(e, names[j])==0){
                                 fseek(drive,firstByte(entry->stCluster+RESERVED),SEEK_SET);
 				currentDir = entry->stCluster;
@@ -627,6 +645,7 @@ dirEntry *openFile(char *path){
                                 return NULL;
                         }
                 }
+		//got to file in path, find entry and set file 
 		else{
 			
 			if(strcmp(e, names[j])==0){
@@ -643,7 +662,10 @@ dirEntry *openFile(char *path){
 }
 
 int closeFile(dirEntry *file){
+	//free file to "close"
 	free(file);
+
+	//seek to root;
 	fseek(drive, firstByte(ROOT), SEEK_SET);
 	currentDir = ROOT-RESERVED;
 	currentCluster = currentDir;
@@ -655,22 +677,31 @@ int writeFile(dirEntry *file, char *write){
 	char cluster[512];
 	char *c = malloc(1);
 	char *h = write;
+
+	//if file is created
 	if(file->stCluster!= 0){
-		//go to end of file
+		//go to file
 		fseek(drive, firstByte(file->stCluster+RESERVED), SEEK_SET);
 		currentCluster = file->stCluster;
+
+		//read one char at a time to end of file
 		fread(c, 1, 1, drive);
 		while(*c!=0x00){
 			fread(c, 1, 1, drive);
 			currentOffset++;
  		}
+		//seek back one byte and write entire buffer
 		fseek(drive, -1, SEEK_CUR);
 		while(*write != '\0'){
+			//write one cluster
 			for(i = 0; i < 512 && *write != '\0'; i++, write++)
 				cluster[i] = *write;
 			fwrite((char*)&cluster, i, 1, drive);
+
+			//if whole cluster written, go to next cluster
 			if(i == 512)
 				d = getNextCluster(currentCluster);
+			//if file full, allocate more space
 			if(d == -1){
 				createFATentry(currentCluster, firstAvailable());
 				currentCluster = getNextCluster(currentCluster);
@@ -693,15 +724,18 @@ char *readFile(dirEntry *file){
 	int d = 0;
         char *c = malloc(10*512);
 	char *h = c;
+	//parse similar to write
         if(file->stCluster!= 0){
-                //go to end of file
+                //go to file
                 fseek(drive, firstByte(file->stCluster+RESERVED), SEEK_SET);
                 currentCluster = file->stCluster;
+		//while there are more clusters in the file
                 while(d!=-1 && i){
                         fread(c, 512, 1, drive);
 			if(*c == 0){
 				i = 0;
 			}
+			//get cluster
                         d = getNextCluster(currentCluster);
 			c = c+512;
 			if(d!=-1)
@@ -715,23 +749,34 @@ char *readFile(dirEntry *file){
 }
 
 int deleteFile(char *path){
+	//open file to parse path
 	dirEntry *file = openFile(path);
+	//if path does not exist
 	if(file->stCluster == 0)
 		return -1;
+	//allocate entry  and nul cluster
 	dirEntry *entry = malloc(sizeof(dirEntry));
 	char *nul = malloc(512*sizeof(char));
 	currentCluster = file->stCluster;
 
+	//seek to current directory
 	fseek(drive, firstByte(currentDir+RESERVED), SEEK_SET);
+	//read entry 
 	fread(entry, 32, 1, drive);
 	currentOffset = 32;
+	//find the file
 	while(entry->stCluster!=file->stCluster){
 		fread(entry, 32, 1, drive);
 	}
+	//seek back on entry
 	fseek(drive, -32, SEEK_CUR);
 	fwrite(nul, 32,1, drive);
+
+	//seek to start cluster and write null to it
 	fseek(drive, firstByte(entry->stCluster+RESERVED), SEEK_SET);
 	fwrite(nul, 512,1, drive);
+	
+	//write 0000 to all clusters in file
 	while(currentCluster!=-1){
 		int i = getNextCluster(currentCluster);
                 createFATentry(currentCluster, 0x0000);

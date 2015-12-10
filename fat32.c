@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
+#include "fat32.h"
 //constants
 #define SECTORS 9765
 #define DATASIZE 9688
@@ -14,48 +14,6 @@
 
 #define ROOT 78
 #define FAT 2
-
-//each FAT entry is 2 bytes, holds next cluster in file or special character 
-typedef struct FATentry{
-	short next;
-}FATentry;
-
-//Each Directory table entry is 32 bytes
-typedef struct dirEntry{
-	char name[11];
-	unsigned int rdonly : 1;
-	unsigned int hidden : 1;
-	unsigned int sysfil : 1;
-	unsigned int volLabel : 1;
-	unsigned int subdir : 1;
-	unsigned int archive : 1;
-	unsigned int bit : 1;
-	unsigned int bit1 : 1;
-	char pad[10];
-	short time;
-	short date;
-	short stCluster;
-	long fileSize;
-}dirEntry;  
-
-//function declarations
-void clearInput();
-void clearDrive();
-int firstByte(int cluster);
-short *getTimeDate();
-int firstAvailable();
-void formatDrive();
-void createDirTable();
-void createFATentry(int cluster, short next);
-int getNextCluster(int cluster);
-dirEntry *createDirEntry(char *namep, char attributes, short time, short date, short stCluster, long fileSize);
-dirEntry *createDirectory(char *path);
-dirEntry *createFile(char *path);
-dirEntry *openFile(char *path);
-int closeFile(dirEntry *file);
-int writeFile(dirEntry *file, char *write);
-char *readFile(dirEntry *file);
-int deleteFile(char *path);
 
 //initialize file pointer
 FILE *drive;
@@ -71,7 +29,7 @@ int currentOffset;
 time_t rawtime;
 struct tm *timeinfo;
 
-//my main function is to test the functions, I will make a demo for my demo
+/*my main function is to test the functions, I will make a demo for my demo
 int main(){
 	currentDir = ROOT-RESERVED;
 	currentCluster = currentDir;
@@ -144,6 +102,8 @@ int main(){
 		//free(input);
 	}
 }
+*/
+
 //clears input for scanf
 void clearInput(){
 	char d;
@@ -219,6 +179,7 @@ void formatDrive(){
 	currentDir = ROOT-RESERVED;
         currentCluster = currentDir;
         currentSpace = DATASIZE;
+
 
 	//create bootblock in cluster 0
 	void *bootblock = malloc(512); 
@@ -679,7 +640,7 @@ int writeFile(dirEntry *file, char *write){
 	char *h = write;
 
 	//if file is created
-	if(file->stCluster!= 0){
+	if(file->stCluster!= 0 && file!=NULL){
 		//go to file
 		fseek(drive, firstByte(file->stCluster+RESERVED), SEEK_SET);
 		currentCluster = file->stCluster;
@@ -725,7 +686,7 @@ char *readFile(dirEntry *file){
         char *c = malloc(10*512);
 	char *h = c;
 	//parse similar to write
-        if(file->stCluster!= 0){
+        if(file->stCluster!= 0 && file != NULL){
                 //go to file
                 fseek(drive, firstByte(file->stCluster+RESERVED), SEEK_SET);
                 currentCluster = file->stCluster;
